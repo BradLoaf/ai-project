@@ -7,7 +7,6 @@ from typing import Dict, Any
 from mediator import Mediator
 from config import num_paths, screen_width, screen_height, screen_color
 from geometry.type import ShapeType
-from geometry.utils import distance
 
 import pygame
 
@@ -38,47 +37,52 @@ class MetroGameEnv(gym.Env):
         self.num_shape_types = len(self.shape_types)
         
         self._action_map = self._create_action_map()
+        self._action_reverse_map = {}
+        for action_id, info in self._action_map.items():
+            if info["type"] == "CREATE_OR_EXTEND_PATH":
+                key = ("CREATE", info["start_idx"], info["end_idx"])
+                self._action_reverse_map[key] = action_id
+            elif info["type"] == "INSERT_STATION":
+                key = ("INSERT", info["insert_idx"], info["exist1_idx"], info["exist2_idx"])
+                self._action_reverse_map[key] = action_id
         self.action_space = spaces.Discrete(len(self._action_map))
 
         self.observation_space = self._create_observation_space()
 
     def _get_action_mask(self) -> np.ndarray:
-        """
-        Generates a boolean mask for valid actions
-        Basically just lets the model know immeaditly
-        if it can take certain actions
-        """
         mask = np.zeros(self.action_space.n, dtype=np.int8)
-        num_stations = len(self.mediator.stations)
+        mask[0] = 1
 
-        for action_id, action_info in self._action_map.items():
-            action_type = action_info["type"]
-            is_valid = False
-            if action_type == "NO_OP":
-                is_valid = True
-            elif action_type == "CREATE_OR_EXTEND_PATH":
-                start_idx, end_idx = action_info["start_idx"], action_info["end_idx"]
-                if start_idx < num_stations and end_idx < num_stations and start_idx != end_idx:
-                    is_valid = True
-            elif action_type == "INSERT_STATION":
-                insert_idx, exist1_idx, exist2_idx = action_info["insert_idx"], action_info["exist1_idx"], action_info["exist2_idx"]
-                if all(i < num_stations for i in [insert_idx, exist1_idx, exist2_idx]) and len({insert_idx, exist1_idx, exist2_idx}) == 3:
-                    s_insert = self.mediator.stations[insert_idx]
-                    s1 = self.mediator.stations[exist1_idx]
-                    s2 = self.mediator.stations[exist2_idx]
-                    for p in self.mediator.paths:
-                        if s_insert in p.stations: continue # Cannot insert a station already on the path
-                        for i in range(len(p.stations) - 1):
-                            if (p.stations[i] == s1 and p.stations[i+1] == s2) or \
-                               (p.stations[i] == s2 and p.stations[i+1] == s1):
-                                is_valid = True; break
-                        if is_valid: break
-                        if p.is_looped and len(p.stations) > 1:
-                            if (p.stations[-1] == s1 and p.stations[0] == s2) or \
-                               (p.stations[-1] == s2 and p.stations[0] == s1):
-                                is_valid = True; break
-            if is_valid:
-                mask[action_id] = 1
+        stations = self.mediator.stations
+        num_stations = len(stations)
+        
+        for i in range(num_stations):
+            for j in range(num_stations):
+                if i == j: continue
+                action_id = self._action_reverse_map.get(("CREATE", i, j))
+                if action_id is not None:
+                    mask[action_id] = 1
+
+        for path in self.mediator.paths:
+            if len(path.stations) < 2: continue
+            
+            edges = []
+            for k in range(len(path.stations) - 1):
+                edges.append((path.stations[k], path.stations[k+1]))
+            if path.is_looped:
+                edges.append((path.stations[-1], path.stations[0]))
+
+            for s1, s2 in edges:
+                s1_idx = stations.index(s1)
+                s2_idx = stations.index(s2)
+                
+                for i in range(num_stations):
+                    s_insert = stations[i]
+                    if s_insert not in path.stations:
+                        action_id = self._action_reverse_map.get(("INSERT", i, s1_idx, s2_idx))
+                        if action_id is not None:
+                            mask[action_id] = 1
+                            
         return mask
 
     def render(self):
@@ -119,140 +123,132 @@ class MetroGameEnv(gym.Env):
             
         return action_map
 
-    def _create_observation_space(self) -> spaces.Box:
-        """Correctly defines the size of the observation space."""
-        # 1 (exists) + 1 (is_connected) + 2 (pos) + 1 (overcrowd) + 1 (timer) + num_shapes (type) + num_shapes (passengers)
-        station_obs_size = 1 + 1 + 2 + 1 + 1 + self.num_shape_types + self.num_shape_types
-        total_station_obs_size = MAX_STATIONS * station_obs_size
-        
-        # 1 (exists/is_loop) + MAX_STATIONS_PER_PATH (station indices)
-        path_obs_size = 1 + MAX_STATIONS_PER_PATH
-        total_path_obs_size = MAX_PATHS * path_obs_size
-        
-        total_size = total_station_obs_size + total_path_obs_size
-        # low=-1 for station indices in paths, high=screen_width just to be safe (though 1.0 is max for most)
-        return spaces.Box(low=-1.0, high=2.0, shape=(total_size,), dtype=np.float32)
-
-    def _get_obs(self) -> np.ndarray:
+    def _create_observation_space(self) -> spaces.Dict:
         """
-        The observation is a flattened `spaces.Box` vector composed of two
-        main parts:
-        
-        1.  **Station Data** (for `MAX_STATIONS`):
-            - `exists` (1): 1.0 if the station exists, 0.0 otherwise.
-            - `is_connected` (1): 1.0 if part of any path, 0.0 otherwise.
-            - `position` (2): (x, y) normalized by screen dimensions.
-            - `is_overcrowded` (1): 1.0 if overcrowded, 0.0 otherwise.
-            - `overcrowd_timer` (1): Normalized time since overcrowding started
-              (0.0 to 1.0).
-            - `type` (num_shapes): One-hot encoding of the station's shape.
-            - `passengers` (num_shapes): Count of waiting passengers
-              for each destination shape, normalized by station capacity.
-        
-        2.  **Path Data** (for `MAX_PATHS`):
-            - `exists/is_loop` (1): 0.0 for non-existent, 1.0 for existing,
-              2.0 for looped path.
-            - `stations` (MAX_STATIONS_PER_PATH): List of station indices (-1
-              for empty).
-
-        Final vector will look like this:
-        [
-        --- Station 0 (14 floats) ---
-        exists, is_connected, x_pos, y_pos, is_overcrowd, crowd_timer,
-        (type_shape_0, type_shape_1, type_shape_2, type_shape_3),  <-- 1-hot type
-        (pass_shape_0, pass_shape_1, pass_shape_2, pass_shape_3), <-- passenger counts
-
-        --- Station 1 (14 floats) ---
-        exists, is_connected, x_pos, y_pos, is_overcrowd, crowd_timer,
-        (0, 0, 1, 0),  <-- 1-hot (e.g., is a triangle)
-        (1.2, 0.5, 0.0, 3.1), <-- passenger counts (normalized)
-        
-        ... (repeated for all MAX_STATIONS) ...
-
-        --- Station 19 (14 floats) ---
-        (0, 0, 0, 0, 0, 0, (0,0,0,0), (0,0,0,0)), <-- all zeros if station doesn't exist
-
-        --- Path 0 (13 floats) ---
-        exists_or_loop_status, (idx_0, idx_1, idx_2, ..., idx_11),
-
-        --- Path 1 (13 floats) ---
-        exists_or_loop_status, (idx_0, idx_1, idx_2, ..., idx_11),
-
-        ... (repeated for all MAX_PATHS) ...
-        ]
+        Creates a Dict space suitable for GNNs.
         """
-        # figure out which stations are connected
+        self.features_per_node = 6 + (2 * self.num_shape_types)
+        
+        self.max_edges = (MAX_PATHS * MAX_STATIONS_PER_PATH) * 2
+
+        return spaces.Dict({
+            "node_features": spaces.Box(
+                low=-1.0, 
+                high=np.inf, 
+                shape=(MAX_STATIONS, self.features_per_node), 
+                dtype=np.float32
+            ),
+            
+            "edge_index": spaces.Box(
+                low=-1, 
+                high=MAX_STATIONS, 
+                shape=(2, self.max_edges), 
+                dtype=np.int64
+            ),
+            
+            "node_mask": spaces.Box(
+                low=0, 
+                high=1, 
+                shape=(MAX_STATIONS,), 
+                dtype=np.int8
+            )
+        })
+
+    def _get_obs(self) -> Dict[str, np.ndarray]:
+        node_feats = np.zeros((MAX_STATIONS, self.features_per_node), dtype=np.float32)
+        node_mask = np.zeros((MAX_STATIONS,), dtype=np.int8)
+        
         stations_in_paths = set()
         for path in self.mediator.paths:
             for station in path.stations:
                 stations_in_paths.add(station.id)
 
-        obs = np.zeros(self.observation_space.shape, dtype=np.float32)
-        
-        # 1 (exists) + 1 (is_connected) + 2 (pos) + 1 (overcrowd) + 1 (timer) + num_shapes (type) + num_shapes (passengers)
-        station_chunk_size = 1 + 1 + 2 + 1 + 1 + self.num_shape_types + self.num_shape_types
-        
+        station_id_to_idx = {}
+
         for i in range(MAX_STATIONS):
-            offset = i * station_chunk_size
-            # Create a vector representation of every station:
             if i < len(self.mediator.stations):
                 station = self.mediator.stations[i]
+                station_id_to_idx[station.id] = i
+                node_mask[i] = 1
                 
-                # Base offset for this station's features
-                feat_offset = 0
+                feat_idx = 0
                 
-                # 1. Existence flag
-                obs[offset + feat_offset] = 1.0 
-                feat_offset += 1
+                # Feature 1: Exists
+                node_feats[i, feat_idx] = 1.0
+                feat_idx += 1
                 
-                # 2. is_connected
-                obs[offset + feat_offset] = 1.0 if station.id in stations_in_paths else 0.0
-                feat_offset += 1
-
-                # 3. Position (2 floats)
-                obs[offset + feat_offset] = station.position.left / screen_width
-                feat_offset += 1
-                obs[offset + feat_offset] = station.position.top / screen_height
-                feat_offset += 1
+                # Feature 2: Is Connected
+                node_feats[i, feat_idx] = 1.0 if station.id in stations_in_paths else 0.0
+                feat_idx += 1
                 
-                # 4. is_overcrowded flag
-                obs[offset + feat_offset] = 1.0 if station.is_overcrowded else 0.0
-                feat_offset += 1
-
-                # 5. Overcrowd timer
+                # Feature 3 & 4: Position (Normalized)
+                node_feats[i, feat_idx] = station.position.left / screen_width
+                feat_idx += 1
+                node_feats[i, feat_idx] = station.position.top / screen_height
+                feat_idx += 1
+                
+                # Feature 5: Overcrowded
+                node_feats[i, feat_idx] = 1.0 if station.is_overcrowded else 0.0
+                feat_idx += 1
+                
+                # Feature 6: Overcrowd Timer
                 if station.is_overcrowded:
                     elapsed = self.mediator.time_ms - station.overcrowd_start_time_ms
-                    obs[offset + feat_offset] = min(elapsed / 10000.0, 1.0)
-                feat_offset += 1
+                    node_feats[i, feat_idx] = min(elapsed / 10000.0, 1.0)
+                feat_idx += 1
                 
-                # 6. Station shape (one-hot)
+                # Feature 7: Station Type (One-Hot)
                 shape_idx = self.shape_to_idx[station.shape.type.value]
-                obs[offset + feat_offset + shape_idx] = 1.0
-                feat_offset += self.num_shape_types
+                node_feats[i, feat_idx + shape_idx] = 1.0
+                feat_idx += self.num_shape_types
                 
-                # 7. Passenger counts (per destination shape)
-                passenger_counts = np.zeros(self.num_shape_types, dtype=np.float32)
+                # Feature 8: Passengers (Count per destination type)
                 for p in station.passengers:
                     dest_idx = self.shape_to_idx[p.destination_shape.type.value]
-                    passenger_counts[dest_idx] += 1
+                    node_feats[i, feat_idx + dest_idx] += (1.0 / max(station.capacity, 1))
+
+        edge_list = []
+        
+        for path in self.mediator.paths:
+            num_stations = len(path.stations)
+            if num_stations < 2:
+                continue
                 
-                obs[offset + feat_offset : offset + station_chunk_size] = passenger_counts / station.capacity
+            for k in range(num_stations - 1):
+                s1 = path.stations[k]
+                s2 = path.stations[k+1]
+                
+                u = station_id_to_idx[s1.id]
+                v = station_id_to_idx[s2.id]
+                
+                edge_list.append([u, v])
+                edge_list.append([v, u])
+            
+            if path.is_looped:
+                s_last = path.stations[-1]
+                s_first = path.stations[0]
+                
+                u = station_id_to_idx[s_last.id]
+                v = station_id_to_idx[s_first.id]
+                
+                edge_list.append([u, v])
+                edge_list.append([v, u])
+
+        edge_index = np.full((2, self.max_edges), -1, dtype=np.int64)
         
-        path_chunk_size = 1 + MAX_STATIONS_PER_PATH
-        station_offset = MAX_STATIONS * station_chunk_size
-        station_to_game_idx = {s.id: i for i, s in enumerate(self.mediator.stations)}
-        
-        for i in range(MAX_PATHS):
-            offset = station_offset + i * path_chunk_size
-            if i < len(self.mediator.paths):
-                path = self.mediator.paths[i]
-                obs[offset] = 1.0 if not path.is_looped else 2.0 # Use 2.0 to signify a loop
-                path_indices = [-1.0] * MAX_STATIONS_PER_PATH
-                for j, station in enumerate(path.stations):
-                    if j < MAX_STATIONS_PER_PATH:
-                        path_indices[j] = station_to_game_idx.get(station.id, -1.0)
-                obs[offset + 1 : offset + path_chunk_size] = path_indices
-        return obs
+        if len(edge_list) > 0:
+            edges_arr = np.array(edge_list, dtype=np.int64)
+            
+            edges_arr = edges_arr.T 
+            
+            num_actual_edges = min(edges_arr.shape[1], self.max_edges)
+            edge_index[:, :num_actual_edges] = edges_arr[:, :num_actual_edges]
+
+        return {
+            "node_features": node_feats,
+            "edge_index": edge_index,
+            "node_mask": node_mask
+        }
 
     def _get_info(self) -> Dict[str, Any]:
         """Returns info dict, including the crucial action mask."""
@@ -301,14 +297,18 @@ class MetroGameEnv(gym.Env):
             if self.mediator.is_game_over: break
             self.mediator.increment_time(16)
 
-        reward = (self.mediator.score - prev_score) * 25.0
+        reward = (self.mediator.score - prev_score) * 25.0 
         
-        reward += 0.01
-        
+        total_passengers = sum(len(s.passengers) for s in self.mediator.stations)
+        reward -= (total_passengers * 0.05)
+
         if not action_was_valid:
-            reward -= 1.0
+            reward -= 0.5
 
         terminated = self.mediator.is_game_over
+
+        if terminated:
+            reward -= 50.0
         
         if self.render_mode == "human":
             self.render()

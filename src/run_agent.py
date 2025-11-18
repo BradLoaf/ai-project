@@ -4,7 +4,6 @@ import argparse
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
-from stable_baselines3.common.env_util import make_vec_env
 
 from mini_metro_env import MetroGameEnv
 
@@ -33,7 +32,6 @@ def run_agent(model_folder):
 
     def create_eval_env():
         env = MetroGameEnv(render_mode="human")
-        env = gym.wrappers.TimeLimit(env, max_episode_steps=5000)
         return env
 
     env = DummyVecEnv([create_eval_env])
