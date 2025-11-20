@@ -10,11 +10,16 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, VecNormalize
 from mini_metro_env import MetroGameEnv
 from gnn_extractor import GNNFeatureExtractor
 
-LOG_DIR = f"logs/GNN-6/"
-MODEL_DIR = f"models/PPO/GNN-6/"
+LOG_DIR = f"logs/GNN-10/"
+MODEL_DIR = f"models/PPO/GNN-10/"
 TOTAL_TIMESTEPS = 25_000_000
 SAVE_FREQ = 50_000
 TB_LOG_NAME = "PPO_GATv2_BN"
+
+def linear_schedule(initial_value: float):
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
 
 def mask_fn(env: gym.Env) -> np.ndarray:
     """Bridge function for ActionMasker."""
@@ -67,12 +72,12 @@ def train_agent():
             verbose=1,
             tensorboard_log=LOG_DIR,
             device="auto",
-            n_steps=2048,
+            n_steps=6096,
             policy_kwargs=policy_kwargs,
-            learning_rate=3e-4,
-            batch_size=64,
-            gamma=0.99,
-            gae_lambda=0.95,
+            learning_rate=linear_schedule(3e-4),
+            batch_size=3096,
+            gamma=0.9999,
+            gae_lambda=0.98,
             n_epochs=10,
             ent_coef=0.01,
             vf_coef=0.5,

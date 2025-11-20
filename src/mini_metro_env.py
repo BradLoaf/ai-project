@@ -298,9 +298,6 @@ class MetroGameEnv(gym.Env):
             self.mediator.increment_time(16)
 
         reward = (self.mediator.score - prev_score) * 25.0 
-        
-        total_passengers = sum(len(s.passengers) for s in self.mediator.stations)
-        reward -= (total_passengers * 0.05)
 
         if not action_was_valid:
             reward -= 0.5

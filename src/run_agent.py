@@ -1,75 +1,90 @@
 import os
-import time
-import argparse
 import gymnasium as gym
-from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+import torch
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.wrappers import ActionMasker
+from stable_baselines3.common.vec_env import DummyVecEnv, VecNormalize
 
+# Import your custom classes (Critical for pickle loading)
 from mini_metro_env import MetroGameEnv
+from gnn_extractor import GNNFeatureExtractor 
 
-def run_agent(model_folder):
-    """
-    Loads and runs a trained PPO agent with a UI.
-    """
-    
-    model_path = os.path.join(model_folder, "final_model.zip")
-    stats_path = os.path.join(model_folder, "vec_normalize.pkl")
+# --- Configuration ---
+MODEL_DIR = "models/PPO/GNN-10/" 
+MODEL_PATH = os.path.join(MODEL_DIR, "final_model.zip")
+STATS_PATH = os.path.join(MODEL_DIR, "vec_normalize.pkl")
 
-    if not os.path.exists(model_path):
-        print(f"Warning: 'final_model.zip' not found. Searching for latest checkpoint...")
-        checkpoints = [f for f in os.listdir(model_folder) if f.startswith("metro_rl_model_") and f.endswith(".zip")]
-        if not checkpoints:
-            print(f"Error: No model files found in {model_folder}. Aborting.")
-            return
-        
-        checkpoints.sort(key=lambda f: int(f.split('_')[3]))
-        model_path = os.path.join(model_folder, checkpoints[-1])
-        print(f"Loading latest checkpoint: {model_path}")
+def mask_fn(env: gym.Env):
+    return env._get_action_mask()
 
-    if not os.path.exists(stats_path):
-        print(f"Error: 'vec_normalize.pkl' not found at {stats_path}. This file is required. Aborting.")
-        return
+def main():
+    print("Initializing Environment...")
 
-    def create_eval_env():
+    def make_env():
+        # Ensure human rendering is enabled
         env = MetroGameEnv(render_mode="human")
+        env = ActionMasker(env, mask_fn)
         return env
 
-    env = DummyVecEnv([create_eval_env])
+    # DummyVecEnv is required because the model was trained on a VecEnv
+    env = DummyVecEnv([make_env])
 
-    env = VecNormalize.load(stats_path, env)
-    env.training = False
-    env.norm_reward = False
+    # 1. Load Normalization Statistics
+    if os.path.exists(STATS_PATH):
+        print(f"Loading normalization stats from {STATS_PATH}...")
+        env = VecNormalize.load(STATS_PATH, env)
+        env.training = False     # Do not update stats during inference
+        env.norm_reward = False  # See raw score in logs
+    else:
+        print("Warning: No normalization stats found. Agent might perform poorly.")
 
-    print(f"Loading model from {model_path}...")
-    model = PPO.load(model_path, env=env)
-    print("Model loaded successfully.")
-
-    obs = env.reset()
-    total_reward = 0
+    # 2. Load the Trained Agent
+    print(f"Loading model from {MODEL_PATH}...")
     
-    print("Starting simulation")
+    # Force load to CPU for inference (usually smoother for rendering)
+    # Change to "cuda" if you want, but unnecessary for single-env inference
+    custom_objects = {
+        "learning_rate": 0.0,
+        "lr_schedule": lambda _: 0.0,
+        "clip_range": lambda _: 0.0,
+    }
+    
+    try:
+        model = MaskablePPO.load(MODEL_PATH, custom_objects=custom_objects, device="cpu")
+    except Exception as e:
+        print(f"Error loading model: {e}")
+        print("Did you ensure 'gnn_extractor.py' matches the training code exactly?")
+        return
+
+    print("\n--- Starting Simulation (Press Ctrl+C to stop) ---")
+    
+    obs = env.reset()
+    
     try:
         while True:
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, terminated, info = env.step(action)
+            action_masks = env.env_method("action_masks")[0]
             
-            total_reward += reward[0]
-            if terminated[0]:
-                print(f"Episode finished. Total Reward: {total_reward}")
-                total_reward = 0
-                print("Resetting environment...")
-                time.sleep(2)
-                obs = env.reset()
-                
+            # deterministic=True picks the absolute best move (High Score Mode)
+            # deterministic=False picks probabalistically (Creative Mode)
+            action, _states = model.predict(
+                obs, 
+                action_masks=action_masks, 
+                deterministic=True 
+            )
+
+            obs, rewards, dones, infos = env.step(action)
+
+            # Render happens inside step() automatically for "human" mode in your Env class
+            
+            if dones[0]:
+                info = infos[0]
+                print(f"Game Over! Final Score: {info.get('score', 'Unknown')}")
+                # Obs is automatically reset by VecEnv, game continues immediately
+
     except KeyboardInterrupt:
-        print("\nSimulation stopped by user.")
+        print("Simulation stopped by user.")
     finally:
         env.close()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run a trained Mini Metro PPO agent with UI.")
-    parser.add_argument("model_folder", type=str, help="Path to the directory containing the saved model (.zip) and stats (vec_normalize.pkl).")
-    
-    args = parser.parse_args()
-    
-    run_agent(args.model_folder)
+    main()
