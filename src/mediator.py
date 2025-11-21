@@ -614,3 +614,101 @@ class Mediator:
                             break
                     if should_set_null_path:
                         self.travel_plans[passenger] = TravelPlan([])
+    
+    def apply_action_for_specific_line(self, line_index: int, action_type: str, params: Dict) -> bool:
+        """
+        Allows a multi-agent environment to force an action on a specific path index.
+        Returns True if valid, False otherwise.
+        """
+        # 1. Identify the path object for this line_index (if it exists)
+        target_path = None
+        if line_index < len(self.paths):
+            target_path = self.paths[line_index]
+
+        num_current_stations = len(self.stations)
+
+        # 2. Handle Creation/Extension
+        if action_type == "CREATE_OR_EXTEND_PATH":
+            # --- FIX: Bounds Check ---
+            start_idx = params["start_idx"]
+            end_idx = params["end_idx"]
+            
+            if start_idx >= num_current_stations or end_idx >= num_current_stations:
+                return False
+            # -------------------------
+
+            s_start = self.stations[start_idx]
+            s_end = self.stations[end_idx]
+
+            # Case A: Path doesn't exist yet. Try to create it.
+            if target_path is None:
+                if line_index == len(self.paths) and line_index < self.num_paths:
+                    assigned_color = (0, 0, 0)
+                    keys = list(self.path_colors.keys())
+                    if line_index < len(keys):
+                        assigned_color = keys[line_index]
+                        self.path_colors[assigned_color] = True
+                    
+                    new_path = Path(assigned_color)
+                    self._assign_color_to_path(new_path, assigned_color)
+                    new_path.add_station(s_start)
+                    new_path.add_station(s_end)
+                    self._add_metro_to_path(new_path)
+                    self.paths.append(new_path)
+                    return True
+                else:
+                    return False 
+
+            # Case B: Path exists. Try to extend/modify it.
+            else:
+                if target_path.is_looped: return False
+                if s_start not in target_path.stations and s_end not in target_path.stations:
+                    return False 
+
+                extend_from_end = target_path.stations[-1] == s_start
+                extend_from_start = target_path.stations[0] == s_start
+
+                if not (extend_from_end or extend_from_start):
+                    extend_from_end = target_path.stations[-1] == s_end
+                    extend_from_start = target_path.stations[0] == s_end
+                    if extend_from_end or extend_from_start:
+                        s_start, s_end = s_end, s_start
+                    else:
+                        return False 
+
+                if s_end in target_path.stations:
+                    if (extend_from_end and target_path.stations[0] == s_end) or \
+                       (extend_from_start and target_path.stations[-1] == s_end):
+                        if len(target_path.stations) > 2:
+                            target_path.set_loop()
+                            return True
+                    return False
+                
+                if extend_from_start:
+                    target_path.stations.reverse()
+                
+                target_path.add_station(s_end)
+                return True
+
+        # 3. Handle Insertion
+        elif action_type == "INSERT_STATION":
+            if target_path is None: return False
+
+            # --- FIX: Bounds Check ---
+            insert_idx = params["insert_idx"]
+            exist1_idx = params["exist1_idx"]
+            exist2_idx = params["exist2_idx"]
+
+            if (insert_idx >= num_current_stations or 
+                exist1_idx >= num_current_stations or 
+                exist2_idx >= num_current_stations):
+                return False
+            # -------------------------
+            
+            s_insert = self.stations[insert_idx]
+            s1 = self.stations[exist1_idx]
+            s2 = self.stations[exist2_idx]
+            
+            return target_path.insert_station_on_segment(s_insert, s1, s2)
+
+        return False
