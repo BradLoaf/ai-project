@@ -271,7 +271,6 @@ class MetroGameEnv(gym.Env):
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
         prev_score = self.mediator.score
-        num_loops_before = sum(1 for p in self.mediator.paths if p.is_looped)
         
         action_info = self._action_map.get(action)
         action_was_valid = False
@@ -296,7 +295,6 @@ class MetroGameEnv(gym.Env):
                     s2 = self.mediator.stations[exist2_idx]
                     action_was_valid = self.mediator.insert_station_on_path(s_insert, s1, s2)
 
-        # Simulate 15 game-ticks
         for _ in range(15): 
             if self.mediator.is_game_over: break
             self.mediator.increment_time(16)
