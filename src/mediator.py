@@ -620,27 +620,22 @@ class Mediator:
         Allows a multi-agent environment to force an action on a specific path index.
         Returns True if valid, False otherwise.
         """
-        # 1. Identify the path object for this line_index (if it exists)
         target_path = None
         if line_index < len(self.paths):
             target_path = self.paths[line_index]
 
         num_current_stations = len(self.stations)
 
-        # 2. Handle Creation/Extension
         if action_type == "CREATE_OR_EXTEND_PATH":
-            # --- FIX: Bounds Check ---
             start_idx = params["start_idx"]
             end_idx = params["end_idx"]
             
             if start_idx >= num_current_stations or end_idx >= num_current_stations:
                 return False
-            # -------------------------
 
             s_start = self.stations[start_idx]
             s_end = self.stations[end_idx]
 
-            # Case A: Path doesn't exist yet. Try to create it.
             if target_path is None:
                 if line_index == len(self.paths) and line_index < self.num_paths:
                     assigned_color = (0, 0, 0)
@@ -659,7 +654,6 @@ class Mediator:
                 else:
                     return False 
 
-            # Case B: Path exists. Try to extend/modify it.
             else:
                 if target_path.is_looped: return False
                 if s_start not in target_path.stations and s_end not in target_path.stations:
@@ -690,11 +684,9 @@ class Mediator:
                 target_path.add_station(s_end)
                 return True
 
-        # 3. Handle Insertion
         elif action_type == "INSERT_STATION":
             if target_path is None: return False
 
-            # --- FIX: Bounds Check ---
             insert_idx = params["insert_idx"]
             exist1_idx = params["exist1_idx"]
             exist2_idx = params["exist2_idx"]
@@ -703,7 +695,6 @@ class Mediator:
                 exist1_idx >= num_current_stations or 
                 exist2_idx >= num_current_stations):
                 return False
-            # -------------------------
             
             s_insert = self.stations[insert_idx]
             s1 = self.stations[exist1_idx]

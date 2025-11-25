@@ -2,16 +2,11 @@ import gymnasium as gym
 from gymnasium import spaces
 from typing import Dict, Any
 import numpy as np
-
-# --- RLLIB IMPORT ---
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
-# --------------------
-
 from mini_metro_env import MetroGameEnv
 
 MAX_EPISODE_STEPS = 1000
 
-# Inherit from MultiAgentEnv, NOT just gym.Env
 class MultiLineMetroEnv(MultiAgentEnv): 
     """
     Multi-agent wrapper for RLlib/MAPPO.
@@ -29,7 +24,6 @@ class MultiLineMetroEnv(MultiAgentEnv):
 
         self.base_env = MetroGameEnv(render_mode=None)
         
-        # RLlib requires these to be defined as Dict spaces
         self.observation_space = spaces.Dict({
             agent: self.base_env.observation_space for agent in self.line_ids
         })
@@ -37,20 +31,17 @@ class MultiLineMetroEnv(MultiAgentEnv):
             agent: self.base_env.action_space for agent in self.line_ids
         })
 
-        # RLlib legacy attributes
         self.observation_spaces = self.observation_space.spaces
         self.action_spaces = self.action_space.spaces
 
         self._episode_step = 0
         self.max_episode_steps = MAX_EPISODE_STEPS
 
-    # --- REQUIRED RLLIB METHODS ---
     def get_observation_space(self, agent_id):
         return self.observation_spaces[agent_id]
 
     def get_action_space(self, agent_id):
         return self.action_spaces[agent_id]
-    # ------------------------------
 
     def reset(self, *, seed=None, options=None):
         obs, info = self.base_env.reset(seed=seed, options=options)
@@ -64,7 +55,6 @@ class MultiLineMetroEnv(MultiAgentEnv):
     def step(self, actions: Dict[str, int]):
         self._episode_step += 1
         
-        # 1. Apply Actions
         individual_penalties = {a: 0.0 for a in self.agents}
         
         for agent_id, action_int in actions.items():
@@ -74,7 +64,6 @@ class MultiLineMetroEnv(MultiAgentEnv):
             action_info = self.base_env._action_map.get(action_int)
             
             if action_info:
-                # Requires the helper we added to mediator.py
                 success = self.base_env.mediator.apply_action_for_specific_line(
                     line_index=line_idx,
                     action_type=action_info["type"],
@@ -83,10 +72,8 @@ class MultiLineMetroEnv(MultiAgentEnv):
                 if not success:
                     individual_penalties[agent_id] -= 1.0
 
-        # 2. Tick Physics
         global_obs, global_reward, done, truncated, info = self.base_env.step(0)
         
-        # 3. Distribute
         obs_dict = {}
         reward_dict = {}
         terminated_dict = {}
