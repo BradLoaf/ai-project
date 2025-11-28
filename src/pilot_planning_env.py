@@ -271,8 +271,8 @@ class PlaneGameEnv(gym.Env):
             "action_mask": self._get_action_mask()
         }
 
-    def reset(self):
-        super().reset()
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
         self.mediator = Mediator()
         if self.render_mode == "human":
             self.render()
