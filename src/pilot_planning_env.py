@@ -3,7 +3,6 @@ from gymnasium import spaces
 import numpy as np
 import itertools
 from typing import Dict, Any
-
 from mediator import Mediator
 from config import num_paths, screen_width, screen_height, screen_color
 from geometry.type import ShapeType
@@ -104,7 +103,14 @@ class PlaneGameEnv(gym.Env):
             self.clock = None
 
     def _create_action_map(self) -> Dict[int, Dict[str, Any]]:
-        """Creates the mapping from discrete action int to game action."""
+        """
+        Creates the mapping from discrete action int to game action
+        The actions are:
+        Do nothing: NO_OP
+        Connect any two airports: CREATE_OR_EXTEND_PATH
+        Insert an airport between a current path: INSERT_AIRPORT
+        """
+        # agent is allowed to take no action:
         action_map = {0: {"type": "NO_OP"}}
         action_id = 1
         
@@ -136,7 +142,7 @@ class PlaneGameEnv(gym.Env):
         total_size = total_airport_obs_size + total_path_obs_size
         return spaces.Box(low=-1.0, high=2.0, shape=(total_size,), dtype=np.float32)
 
-    def _get_obs(self) -> np.ndarray:
+    def _get_obs(self):
         """
         Documentation Written by GEMINI
         The observation is a flattened `spaces.Box` vector composed of two
@@ -258,8 +264,7 @@ class PlaneGameEnv(gym.Env):
                 obs[offset + 1 : offset + path_chunk_size] = path_indices
         return obs
 
-    def _get_info(self) -> Dict[str, Any]:
-        """Returns info dict"""
+    def _get_info(self):
         return {
             "score": self.mediator.score,
             "steps": self.mediator.steps,
@@ -304,8 +309,10 @@ class PlaneGameEnv(gym.Env):
             if self.mediator.is_game_over: break
             self.mediator.increment_time(16)
 
+        # Reward 25 points for delivering a passenger
         reward = (self.mediator.score - prev_score) * 25.0
         
+        # small reward for surviving
         reward += 0.01
         
         if not action_was_valid:

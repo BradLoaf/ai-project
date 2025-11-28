@@ -1,5 +1,4 @@
 import os
-import time
 import gymnasium as gym
 import platform
 from stable_baselines3 import PPO
@@ -18,17 +17,27 @@ TOTAL_TIMESTEPS = 25_000_000
 SAVE_FREQ = 25_000
 
 TB_LOG_NAME = "PPO_plane_Run"
+
+# This defines the structure of the actor and critic network.
+# I was having trouble modifying the network_architecture from SB3's logs so Gemini helped with this,
+# turns out its a kwarg
 net_arch_config = [256, 128, 128] 
 policy_kwargs = dict(net_arch=net_arch_config)
 
 def create_env():
-    """Helper function to create and wrap the environment."""
+    """
+    Helper function to create and wrap the environment
+    Includes a timeout 
+    """
     env = PlaneGameEnv(render_mode=None)
     env = gym.wrappers.TimeLimit(env, max_episode_steps=5000)
     return env
 
 def train_agent():
-    """Initializes and trains the PPO agent."""
+    """
+    Initializes and trains the PPO agent
+    Creates seperate enviornments for each core on the CPU to decrease train time
+    """
     if __name__ == '__main__':
         os.makedirs(LOG_DIR, exist_ok=True)
         os.makedirs(MODEL_DIR, exist_ok=True)
