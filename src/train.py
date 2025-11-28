@@ -1,5 +1,4 @@
 import os
-import time
 import gymnasium as gym
 import platform
 from stable_baselines3 import PPO
@@ -7,25 +6,42 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import VecNormalize
-from mini_metro_env import MetroGameEnv
+from pilot_planning_env import PlaneGameEnv
 
+# GEMINI generated the code that allows for training in parallel on multiple cores at once
+# GEMINI also helped with the normalization inorder to prevent crazy fulctuations in score
 
 LOG_DIR = f"logs/512-512-512/"
 MODEL_DIR = f"models/PPO/512-512-512/"
 TOTAL_TIMESTEPS = 100_000_000
 SAVE_FREQ = 50_000
+<<<<<<< HEAD
 TB_LOG_NAME = "PPO_Metro_Run"
+=======
+
+TB_LOG_NAME = "PPO_plane_Run"
+
+# This defines the structure of the actor and critic network.
+# I was having trouble modifying the network_architecture from SB3's logs so Gemini helped with this,
+# turns out its a kwarg
+>>>>>>> BEST-MODEL
 net_arch_config = [512, 512, 512]
 policy_kwargs = dict(net_arch=net_arch_config)
 
 def create_env():
-    """Helper function to create and wrap the environment."""
-    env = MetroGameEnv(render_mode=None)
+    """
+    Helper function to create and wrap the environment
+    Includes a timeout 
+    """
+    env = PlaneGameEnv(render_mode=None)
     env = gym.wrappers.TimeLimit(env, max_episode_steps=5000)
     return env
 
 def train_agent():
-    """Initializes and trains the PPO agent."""
+    """
+    Initializes and trains the PPO agent
+    Creates seperate enviornments for each core on the CPU to decrease train time
+    """
     if __name__ == '__main__':
         os.makedirs(LOG_DIR, exist_ok=True)
         os.makedirs(MODEL_DIR, exist_ok=True)
@@ -43,7 +59,7 @@ def train_agent():
         checkpoint_callback = CheckpointCallback(
             save_freq=SAVE_FREQ,
             save_path=MODEL_DIR,
-            name_prefix="metro_rl_model",
+            name_prefix="plane_rl_model",
             save_replay_buffer=True,
             save_vecnormalize=True,
         )
@@ -51,7 +67,7 @@ def train_agent():
         checkpoint_callback = CheckpointCallback(
             save_freq=SAVE_FREQ,
             save_path=MODEL_DIR,
-            name_prefix="metro_rl_model",
+            name_prefix="plane_rl_model",
             save_replay_buffer=True,
             save_vecnormalize=True,
         )
