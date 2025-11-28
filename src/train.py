@@ -7,20 +7,21 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import VecNormalize
-from mini_metro_env import MetroGameEnv
+from pilot_planning_env import PlaneGameEnv
 
 
 LOG_DIR = f"logs/256-128-128/"
 MODEL_DIR = f"models/PPO/256-128-128/"
 TOTAL_TIMESTEPS = 25_000_000
 SAVE_FREQ = 25_000
-TB_LOG_NAME = "PPO_Metro_Run"
+
+TB_LOG_NAME = "PPO_plane_Run"
 net_arch_config = [256, 128, 128] 
 policy_kwargs = dict(net_arch=net_arch_config)
 
 def create_env():
     """Helper function to create and wrap the environment."""
-    env = MetroGameEnv(render_mode=None)
+    env = PlaneGameEnv(render_mode=None)
     env = gym.wrappers.TimeLimit(env, max_episode_steps=5000)
     return env
 
@@ -43,7 +44,7 @@ def train_agent():
         checkpoint_callback = CheckpointCallback(
             save_freq=SAVE_FREQ,
             save_path=MODEL_DIR,
-            name_prefix="metro_rl_model",
+            name_prefix="plane_rl_model",
             save_replay_buffer=True,
             save_vecnormalize=True,
         )
@@ -51,7 +52,7 @@ def train_agent():
         checkpoint_callback = CheckpointCallback(
             save_freq=SAVE_FREQ,
             save_path=MODEL_DIR,
-            name_prefix="metro_rl_model",
+            name_prefix="plane_rl_model",
             save_replay_buffer=True,
             save_vecnormalize=True,
         )
