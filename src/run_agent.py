@@ -10,6 +10,7 @@ from pilot_planning_env import PlaneGameEnv
 
 def run_agent(model_folder):
     """
+    GEMINI helped to create a robust function to run the model.
     Loads and runs a trained PPO agent with a UI.
     """
     

@@ -9,6 +9,8 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import VecNormalize
 from pilot_planning_env import PlaneGameEnv
 
+# GEMINI generated the code that allows for training in parallel on multiple cores at once
+# GEMINI also helped with the normalization inorder to prevent crazy fulctuations in score
 
 LOG_DIR = f"logs/256-128-128/"
 MODEL_DIR = f"models/PPO/256-128-128/"

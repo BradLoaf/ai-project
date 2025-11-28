@@ -11,9 +11,9 @@ from geometry.utils import distance
 
 import pygame
 
-MAX_airportS = 20
+MAX_AIRPORTS = 20
 MAX_PATHS = num_paths
-MAX_airportS_PER_PATH = 12
+MAX_AIRPORTS_PER_PATH = 12
 
 class PlaneGameEnv(gym.Env):
     """A Gymnasium environment for the Python Mini plane game."""
@@ -44,6 +44,7 @@ class PlaneGameEnv(gym.Env):
 
     def _get_action_mask(self) -> np.ndarray:
         """
+        GEMINI helped to create the action mask generator
         Generates a boolean mask for valid actions
         Basically just lets the model know immeaditly
         if it can take certain actions
@@ -60,7 +61,7 @@ class PlaneGameEnv(gym.Env):
                 start_idx, end_idx = action_info["start_idx"], action_info["end_idx"]
                 if start_idx < num_airports and end_idx < num_airports and start_idx != end_idx:
                     is_valid = True
-            elif action_type == "INSERT_airport":
+            elif action_type == "INSERT_AIRPORT":
                 insert_idx, exist1_idx, exist2_idx = action_info["insert_idx"], action_info["exist1_idx"], action_info["exist2_idx"]
                 if all(i < num_airports for i in [insert_idx, exist1_idx, exist2_idx]) and len({insert_idx, exist1_idx, exist2_idx}) == 3:
                     s_insert = self.mediator.airports[insert_idx]
@@ -107,34 +108,37 @@ class PlaneGameEnv(gym.Env):
         action_map = {0: {"type": "NO_OP"}}
         action_id = 1
         
-        airport_pairs = list(itertools.permutations(range(MAX_airportS), 2))
+        airport_pairs = list(itertools.permutations(range(MAX_AIRPORTS), 2))
         for start_idx, end_idx in airport_pairs:
             action_map[action_id] = {"type": "CREATE_OR_EXTEND_PATH", "start_idx": start_idx, "end_idx": end_idx}
             action_id += 1
             
-        airport_trios = list(itertools.permutations(range(MAX_airportS), 3))
+        airport_trios = list(itertools.permutations(range(MAX_AIRPORTS), 3))
         for insert_idx, exist1_idx, exist2_idx in airport_trios:
-            action_map[action_id] = {"type": "INSERT_airport", "insert_idx": insert_idx, "exist1_idx": exist1_idx, "exist2_idx": exist2_idx}
+            action_map[action_id] = {"type": "INSERT_AIRPORT", "insert_idx": insert_idx, "exist1_idx": exist1_idx, "exist2_idx": exist2_idx}
             action_id += 1
             
         return action_map
 
     def _create_observation_space(self) -> spaces.Box:
-        """Correctly defines the size of the observation space."""
+        """
+        Correctly defines the size of the observation space.
+        This determins the size of the input vector
+        """
+        # Vector size is determined by:
         # 1 (exists) + 1 (is_connected) + 2 (pos) + 1 (overcrowd) + 1 (timer) + num_shapes (type) + num_shapes (passengers)
         airport_obs_size = 1 + 1 + 2 + 1 + 1 + self.num_shape_types + self.num_shape_types
-        total_airport_obs_size = MAX_airportS * airport_obs_size
+        total_airport_obs_size = MAX_AIRPORTS * airport_obs_size
         
-        # 1 (exists/is_loop) + MAX_airportS_PER_PATH (airport indices)
-        path_obs_size = 1 + MAX_airportS_PER_PATH
+        path_obs_size = 1 + MAX_AIRPORTS_PER_PATH
         total_path_obs_size = MAX_PATHS * path_obs_size
         
         total_size = total_airport_obs_size + total_path_obs_size
-        # low=-1 for airport indices in paths, high=screen_width just to be safe (though 1.0 is max for most)
         return spaces.Box(low=-1.0, high=2.0, shape=(total_size,), dtype=np.float32)
 
     def _get_obs(self) -> np.ndarray:
         """
+        Documentation Written by GEMINI
         The observation is a flattened `spaces.Box` vector composed of two
         main parts:
         
@@ -152,7 +156,7 @@ class PlaneGameEnv(gym.Env):
         2.  **Path Data** (for `MAX_PATHS`):
             - `exists/is_loop` (1): 0.0 for non-existent, 1.0 for existing,
               2.0 for looped path.
-            - `airports` (MAX_airportS_PER_PATH): List of airport indices (-1
+            - `airports` (MAX_AIRPORTS_PER_PATH): List of airport indices (-1
               for empty).
 
         Final vector will look like this:
@@ -167,7 +171,7 @@ class PlaneGameEnv(gym.Env):
         (0, 0, 1, 0),  <-- 1-hot (e.g., is a triangle)
         (1.2, 0.5, 0.0, 3.1), <-- passenger counts (normalized)
         
-        ... (repeated for all MAX_airportS) ...
+        ... (repeated for all MAX_AIRPORTS) ...
 
         --- airport 19 (14 floats) ---
         (0, 0, 0, 0, 0, 0, (0,0,0,0), (0,0,0,0)), <-- all zeros if airport doesn't exist
@@ -189,48 +193,48 @@ class PlaneGameEnv(gym.Env):
 
         obs = np.zeros(self.observation_space.shape, dtype=np.float32)
         
+        # deinfes the height of the airport matrix:
         # 1 (exists) + 1 (is_connected) + 2 (pos) + 1 (overcrowd) + 1 (timer) + num_shapes (type) + num_shapes (passengers)
         airport_chunk_size = 1 + 1 + 2 + 1 + 1 + self.num_shape_types + self.num_shape_types
         
-        for i in range(MAX_airportS):
+        for i in range(MAX_AIRPORTS):
             offset = i * airport_chunk_size
-            # Create a vector representation of every airport:
             if i < len(self.mediator.airports):
                 airport = self.mediator.airports[i]
                 
-                # Base offset for this airport's features
+                # keep track of what feature were on
                 feat_offset = 0
                 
-                # 1. Existence flag
+                # Exists?
                 obs[offset + feat_offset] = 1.0 
                 feat_offset += 1
                 
-                # 2. is_connected
+                # is_connected
                 obs[offset + feat_offset] = 1.0 if airport.id in airports_in_paths else 0.0
                 feat_offset += 1
 
-                # 3. Position (2 floats)
+                # Position
                 obs[offset + feat_offset] = airport.position.left / screen_width
                 feat_offset += 1
                 obs[offset + feat_offset] = airport.position.top / screen_height
                 feat_offset += 1
                 
-                # 4. is_overcrowded flag
+                # is_overcrowded
                 obs[offset + feat_offset] = 1.0 if airport.is_overcrowded else 0.0
                 feat_offset += 1
 
-                # 5. Overcrowd timer
+                # Overcrowd timer
                 if airport.is_overcrowded:
                     elapsed = self.mediator.time_ms - airport.overcrowd_start_time_ms
                     obs[offset + feat_offset] = min(elapsed / 10000.0, 1.0)
                 feat_offset += 1
                 
-                # 6. airport shape (one-hot)
+                # airport shape
                 shape_idx = self.shape_to_idx[airport.shape.type.value]
                 obs[offset + feat_offset + shape_idx] = 1.0
                 feat_offset += self.num_shape_types
                 
-                # 7. Passenger counts (per destination shape)
+                # Passenger counts
                 passenger_counts = np.zeros(self.num_shape_types, dtype=np.float32)
                 for p in airport.passengers:
                     dest_idx = self.shape_to_idx[p.destination_shape.type.value]
@@ -238,8 +242,8 @@ class PlaneGameEnv(gym.Env):
                 
                 obs[offset + feat_offset : offset + airport_chunk_size] = passenger_counts / airport.capacity
         
-        path_chunk_size = 1 + MAX_airportS_PER_PATH
-        airport_offset = MAX_airportS * airport_chunk_size
+        path_chunk_size = 1 + MAX_AIRPORTS_PER_PATH
+        airport_offset = MAX_AIRPORTS * airport_chunk_size
         airport_to_game_idx = {s.id: i for i, s in enumerate(self.mediator.airports)}
         
         for i in range(MAX_PATHS):
@@ -247,31 +251,30 @@ class PlaneGameEnv(gym.Env):
             if i < len(self.mediator.paths):
                 path = self.mediator.paths[i]
                 obs[offset] = 1.0 if not path.is_looped else 2.0 # Use 2.0 to signify a loop
-                path_indices = [-1.0] * MAX_airportS_PER_PATH
+                path_indices = [-1.0] * MAX_AIRPORTS_PER_PATH
                 for j, airport in enumerate(path.airports):
-                    if j < MAX_airportS_PER_PATH:
+                    if j < MAX_AIRPORTS_PER_PATH:
                         path_indices[j] = airport_to_game_idx.get(airport.id, -1.0)
                 obs[offset + 1 : offset + path_chunk_size] = path_indices
         return obs
 
     def _get_info(self) -> Dict[str, Any]:
-        """Returns info dict, including the crucial action mask."""
+        """Returns info dict"""
         return {
             "score": self.mediator.score,
             "steps": self.mediator.steps,
             "action_mask": self._get_action_mask()
         }
 
-    def reset(self, seed=None, options=None) -> tuple[np.ndarray, Dict[str, Any]]:
-        super().reset(seed=seed)
+    def reset(self):
+        super().reset()
         self.mediator = Mediator()
         if self.render_mode == "human":
             self.render()
         return self._get_obs(), self._get_info()
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+    def step(self, action: int):
         prev_score = self.mediator.score
-        num_loops_before = sum(1 for p in self.mediator.paths if p.is_looped)
         
         action_info = self._action_map.get(action)
         action_was_valid = False
@@ -288,7 +291,7 @@ class PlaneGameEnv(gym.Env):
                     end_airport = self.mediator.airports[end_idx]
                     action_was_valid = self.mediator.create_or_extend_path(start_airport, end_airport)
 
-            elif action_type == "INSERT_airport":
+            elif action_type == "INSERT_AIRPORT":
                 insert_idx, exist1_idx, exist2_idx = action_info["insert_idx"], action_info["exist1_idx"], action_info["exist2_idx"]
                 if all(i < len(self.mediator.airports) for i in [insert_idx, exist1_idx, exist2_idx]):
                     s_insert = self.mediator.airports[insert_idx]
