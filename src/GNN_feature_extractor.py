@@ -20,17 +20,17 @@ class FeatureExtractor(BaseFeaturesExtractor):
         self.airports_total_length = MAX_AIRPORTS * self.airport_chunk_size
         self.path_chunk_size = 1 + MAX_PATH_LEN
         
-        self.hidden_dim = 64
+        self.extracted_features = 64
         self.cnn = nn.Sequential(
-            nn.Conv1d(self.features_per_airport, self.hidden_dim, kernel_size=1),
-            nn.BatchNorm1d(self.hidden_dim),
+            nn.Conv1d(self.features_per_airport, self.extracted_features, kernel_size=1),
+            nn.BatchNorm1d(self.extracted_features),
             nn.ReLU(),
-            nn.Conv1d(self.hidden_dim, self.hidden_dim, kernel_size=1),
-            nn.BatchNorm1d(self.hidden_dim),
+            nn.Conv1d(self.extracted_features, self.extracted_features, kernel_size=1),
+            nn.BatchNorm1d(self.extracted_features),
             nn.ReLU()
         )
         
-        self.flatten_dim = (MAX_AIRPORTS * self.hidden_dim) + (MAX_PATHS * self.hidden_dim)
+        self.flatten_dim = (MAX_AIRPORTS * self.extracted_features) + (MAX_PATHS * self.extracted_features)
         
         self.linear = nn.Linear(self.flatten_dim, features_dim)
         self.relu = nn.ReLU()
