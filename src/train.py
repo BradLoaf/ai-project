@@ -10,12 +10,12 @@ from stable_baselines3.common.vec_env import VecNormalize
 from mini_metro_env import MetroGameEnv
 
 
-LOG_DIR = f"logs/256-128-128/"
-MODEL_DIR = f"models/PPO/256-128-128/"
-TOTAL_TIMESTEPS = 25_000_000
-SAVE_FREQ = 25_000
+LOG_DIR = f"logs/512-512-512/"
+MODEL_DIR = f"models/PPO/512-512-512/"
+TOTAL_TIMESTEPS = 100_000_000
+SAVE_FREQ = 50_000
 TB_LOG_NAME = "PPO_Metro_Run"
-net_arch_config = [256, 128, 128] 
+net_arch_config = [512, 512, 512]
 policy_kwargs = dict(net_arch=net_arch_config)
 
 def create_env():
@@ -29,7 +29,7 @@ def train_agent():
     if __name__ == '__main__':
         os.makedirs(LOG_DIR, exist_ok=True)
         os.makedirs(MODEL_DIR, exist_ok=True)
-        num_cpu = os.cpu_count() - 1 if os.cpu_count() > 1 else 1
+        num_cpu = os.cpu_count() if os.cpu_count() > 1 else 1
         start_method = 'fork' if platform.system() != 'Windows' else 'spawn'
         env = make_vec_env(
             create_env,
@@ -62,11 +62,11 @@ def train_agent():
             verbose=1,
             tensorboard_log=LOG_DIR,
             device="cpu",
-            n_steps=4096,
-            learning_rate=1e-5,
+            n_steps=8192,
+            learning_rate=3e-4,
             policy_kwargs=policy_kwargs,
-            batch_size=64,
-            gamma=0.99,
+            batch_size=4096 * 4,
+            gamma=0.999,
             gae_lambda=0.95,
             n_epochs=10,
             ent_coef=0.01,

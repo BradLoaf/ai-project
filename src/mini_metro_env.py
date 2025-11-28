@@ -42,45 +42,6 @@ class MetroGameEnv(gym.Env):
 
         self.observation_space = self._create_observation_space()
 
-    def _get_action_mask(self) -> np.ndarray:
-        """
-        Generates a boolean mask for valid actions
-        Basically just lets the model know immeaditly
-        if it can take certain actions
-        """
-        mask = np.zeros(self.action_space.n, dtype=np.int8)
-        num_stations = len(self.mediator.stations)
-
-        for action_id, action_info in self._action_map.items():
-            action_type = action_info["type"]
-            is_valid = False
-            if action_type == "NO_OP":
-                is_valid = True
-            elif action_type == "CREATE_OR_EXTEND_PATH":
-                start_idx, end_idx = action_info["start_idx"], action_info["end_idx"]
-                if start_idx < num_stations and end_idx < num_stations and start_idx != end_idx:
-                    is_valid = True
-            elif action_type == "INSERT_STATION":
-                insert_idx, exist1_idx, exist2_idx = action_info["insert_idx"], action_info["exist1_idx"], action_info["exist2_idx"]
-                if all(i < num_stations for i in [insert_idx, exist1_idx, exist2_idx]) and len({insert_idx, exist1_idx, exist2_idx}) == 3:
-                    s_insert = self.mediator.stations[insert_idx]
-                    s1 = self.mediator.stations[exist1_idx]
-                    s2 = self.mediator.stations[exist2_idx]
-                    for p in self.mediator.paths:
-                        if s_insert in p.stations: continue # Cannot insert a station already on the path
-                        for i in range(len(p.stations) - 1):
-                            if (p.stations[i] == s1 and p.stations[i+1] == s2) or \
-                               (p.stations[i] == s2 and p.stations[i+1] == s1):
-                                is_valid = True; break
-                        if is_valid: break
-                        if p.is_looped and len(p.stations) > 1:
-                            if (p.stations[-1] == s1 and p.stations[0] == s2) or \
-                               (p.stations[-1] == s2 and p.stations[0] == s1):
-                                is_valid = True; break
-            if is_valid:
-                mask[action_id] = 1
-        return mask
-
     def render(self):
         if self.render_mode != "human" or self.screen is None: 
             return
@@ -259,7 +220,6 @@ class MetroGameEnv(gym.Env):
         return {
             "score": self.mediator.score,
             "steps": self.mediator.steps,
-            "action_mask": self._get_action_mask()
         }
 
     def reset(self, seed=None, options=None) -> tuple[np.ndarray, Dict[str, Any]]:
