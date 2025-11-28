@@ -6,23 +6,24 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.vec_env import VecNormalize
+from GNN_feature_extractor import FeatureExtractor
 from pilot_planning_env import PlaneGameEnv
 
 # GEMINI generated the code that allows for training in parallel on multiple cores at once
 # GEMINI also helped with the normalization inorder to prevent crazy fulctuations in score
 
-LOG_DIR = f"logs/256-128-128/"
-MODEL_DIR = f"models/PPO/256-128-128/"
+LOG_DIR = f"logs/GNN_plane_run/"
+MODEL_DIR = f"models/PPO/GNN_plane_run/"
 TOTAL_TIMESTEPS = 25_000_000
 SAVE_FREQ = 25_000
 
-TB_LOG_NAME = "PPO_plane_Run"
+TB_LOG_NAME = "GNN_plane_run"
 
-# This defines the structure of the actor and critic network.
-# I was having trouble modifying the network_architecture from SB3's logs so Gemini helped with this,
-# turns out its a kwarg
-net_arch_config = [256, 128, 128] 
-policy_kwargs = dict(net_arch=net_arch_config)
+policy_kwargs = dict(
+    features_extractor_class=FeatureExtractor,
+    features_extractor_kwargs=dict(features_dim=128),
+    net_arch=dict(pi=[128, 128], vf=[128, 128]) 
+)
 
 def create_env():
     """
@@ -69,12 +70,12 @@ def train_agent():
         )
 
         model = PPO(
-            "MlpPolicy",
+            "MultiInputPolicy",
             env,
             verbose=1,
             tensorboard_log=LOG_DIR,
             device="cpu",
-            n_steps=4096,
+            n_steps=2048,
             learning_rate=1e-5,
             policy_kwargs=policy_kwargs,
             batch_size=64,
