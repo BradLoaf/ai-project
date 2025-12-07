@@ -9,9 +9,6 @@ from stable_baselines3.common.vec_env import VecNormalize
 from GNN_feature_extractor import FeatureExtractor
 from pilot_planning_env import PlaneGameEnv
 
-# GEMINI generated the code that allows for training in parallel on multiple cores at once
-# GEMINI also helped with the normalization inorder to prevent crazy fulctuations in score
-
 LOG_DIR = f"logs/GNN_plane_run/"
 MODEL_DIR = f"models/PPO/GNN_plane_run/"
 TOTAL_TIMESTEPS = 25_000_000
@@ -28,7 +25,7 @@ policy_kwargs = dict(
 def create_env():
     """
     Helper function to create and wrap the environment
-    Includes a timeout 
+    Includes a timeout incase the mediator breaks
     """
     env = PlaneGameEnv(render_mode=None)
     env = gym.wrappers.TimeLimit(env, max_episode_steps=5000)
@@ -37,12 +34,13 @@ def create_env():
 def train_agent():
     """
     Initializes and trains the PPO agent
-    Creates seperate enviornments for each core on the CPU to decrease train time
+    Creates seperate enviornments for each core on the CPU to speed up training
     """
     if __name__ == '__main__':
         os.makedirs(LOG_DIR, exist_ok=True)
         os.makedirs(MODEL_DIR, exist_ok=True)
-        num_cpu = os.cpu_count() - 1 if os.cpu_count() > 1 else 1
+        # Gemini helped with the make_vec_env and the start_method for parallel training
+        num_cpu = os.cpu_count() if os.cpu_count() > 1 else 1
         start_method = 'fork' if platform.system() != 'Windows' else 'spawn'
         env = make_vec_env(
             create_env,
@@ -51,15 +49,9 @@ def train_agent():
             vec_env_kwargs=dict(start_method=start_method)
         )
 
-        env = VecNormalize(env, gamma=0.99)
-
-        checkpoint_callback = CheckpointCallback(
-            save_freq=SAVE_FREQ,
-            save_path=MODEL_DIR,
-            name_prefix="plane_rl_model",
-            save_replay_buffer=True,
-            save_vecnormalize=True,
-        )
+        # This turns all inputs and rewards into a Z-score
+        # This is very useful in PPO to prevent the network from being overwhelmed
+        env = VecNormalize(env, gamma=0.999)
 
         checkpoint_callback = CheckpointCallback(
             save_freq=SAVE_FREQ,
@@ -76,10 +68,10 @@ def train_agent():
             tensorboard_log=LOG_DIR,
             device="cpu",
             n_steps=2048,
-            learning_rate=1e-5,
+            learning_rate=3e-4,
             policy_kwargs=policy_kwargs,
-            batch_size=64,
-            gamma=0.99,
+            batch_size=4096,
+            gamma=0.999,
             gae_lambda=0.95,
             n_epochs=10,
             ent_coef=0.01,

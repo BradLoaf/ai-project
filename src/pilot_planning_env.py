@@ -66,12 +66,12 @@ class PlaneGameEnv(gym.Env):
         """
         Creates the mapping from discrete action int to game action
         The actions are:
-        Do nothing: NO_OP
+        Do nothing: NO_ACTION
         Connect any two airports: CREATE_OR_EXTEND_PATH
         Insert an airport between a current path: INSERT_AIRPORT
         """
         # agent is allowed to take no action:
-        action_map = {0: {"type": "NO_OP"}}
+        action_map = {0: {"type": "NO_ACTION"}}
         action_id = 1
         
         airport_pairs = list(itertools.permutations(range(MAX_AIRPORTS), 2))
@@ -245,7 +245,7 @@ class PlaneGameEnv(gym.Env):
         
         if action_info:
             action_type = action_info["type"]
-            if action_type == "NO_OP":
+            if action_type == "NO_ACTION":
                 action_was_valid = True
 
             elif action_type == "CREATE_OR_EXTEND_PATH":

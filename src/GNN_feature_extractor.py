@@ -7,22 +7,24 @@ MAX_PATHS = 3
 MAX_PATH_LEN = 12
 NUM_SHAPES = 4      
 """
-Gemini helped to walk through the entire feature extraction process
-Primarially with ensuring that tensors were the proper sizes
+Gemini helped to define the Feature Extractor to be used for SB3
 """
 class FeatureExtractor(BaseFeaturesExtractor):
     def __init__(self, observation_space, features_dim = 128):
         super().__init__(observation_space, features_dim)
 
         # we need to define the sizes of the input to our CNN
-        self.features_per_airport = 6 + (2 * NUM_SHAPES)
-        self.airport_chunk_size = self.features_per_airport
-        self.airports_total_length = MAX_AIRPORTS * self.airport_chunk_size
+        # airports have 14 features
+        self.airport_features = 6 + (2 * NUM_SHAPES)
+        # the length of the flattened airport matrix
+        self.airports_total_length = MAX_AIRPORTS * self.airport_features
+        # the number of features for paths, (existance and airports connected)
         self.path_chunk_size = 1 + MAX_PATH_LEN
         
+        # we extract 64 features from every airport
         self.extracted_features = 64
         self.cnn = nn.Sequential(
-            nn.Conv1d(self.features_per_airport, self.extracted_features, kernel_size=1),
+            nn.Conv1d(self.airport_features, self.extracted_features, kernel_size=1),
             nn.BatchNorm1d(self.extracted_features),
             nn.ReLU(),
             nn.Conv1d(self.extracted_features, self.extracted_features, kernel_size=1),
@@ -30,6 +32,7 @@ class FeatureExtractor(BaseFeaturesExtractor):
             nn.ReLU()
         )
         
+        # how long we expect the final flattened matrix of airports and paths to be
         self.flatten_dim = (MAX_AIRPORTS * self.extracted_features) + (MAX_PATHS * self.extracted_features)
         
         self.linear = nn.Linear(self.flatten_dim, features_dim)
@@ -41,17 +44,17 @@ class FeatureExtractor(BaseFeaturesExtractor):
 
         airports = x[:, :self.airports_total_length]
         
-        airports = airports.view(batch_size, MAX_AIRPORTS, self.features_per_airport)
-        airports = airports.transpose(1, 2) 
+        airports = airports.view(batch_size, MAX_AIRPORTS, self.airport_features)
+        airports = airports.transpose(1, 2)
         
-        airport_features = self.cnn(airports) 
+        airport_features = self.cnn(airports)
 
         path_flat = x[:, self.airports_total_length:]
         path_data = path_flat.view(batch_size, MAX_PATHS, self.path_chunk_size)
         path_indices = path_data[:, :, 1:].long()
 
         """
-        GEMINI generated the code to reshape and process the data to be fed into the CNN
+        GEMINI generated the code to create and multiply the adjacency matrix
         """
         # create the matrix representing path connections
         path_matrix = torch.zeros(batch_size, MAX_PATHS, MAX_AIRPORTS, device=device)
@@ -64,9 +67,6 @@ class FeatureExtractor(BaseFeaturesExtractor):
                 src = torch.ones_like(safe_idx, dtype=torch.float32).unsqueeze(2)
                 path_matrix.scatter_add_(2, safe_idx.unsqueeze(2), src * valid_mask.unsqueeze(2).float())
         airport_features_t = airport_features.transpose(1, 2)
-        """
-        GEMINI generated the code to reshape and process the data to be fed into the CNN
-        """
 
         # this allows for paths to learn about the airports they connect
         path_features = torch.bmm(path_matrix, airport_features_t)
