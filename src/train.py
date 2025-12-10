@@ -9,17 +9,17 @@ from stable_baselines3.common.vec_env import VecNormalize
 from GNN_feature_extractor import FeatureExtractor
 from pilot_planning_env import PlaneGameEnv
 
-LOG_DIR = f"logs/GNN_plane_run/"
-MODEL_DIR = f"models/PPO/GNN_plane_run/"
+LOG_DIR = f"logs/FINAL-RUN/"
+MODEL_DIR = f"models/PPO/FINAL-RUN/"
 TOTAL_TIMESTEPS = 25_000_000
 SAVE_FREQ = 25_000
 
-TB_LOG_NAME = "GNN_plane_run"
+TB_LOG_NAME = "FINAL-RUN"
 
 policy_kwargs = dict(
     features_extractor_class=FeatureExtractor,
     features_extractor_kwargs=dict(features_dim=128),
-    net_arch=dict(pi=[128, 128], vf=[128, 128]) 
+    net_arch=dict(pi=[512, 512, 512], vf=[512, 512, 512]) 
 )
 
 def create_env():
@@ -67,10 +67,10 @@ def train_agent():
             verbose=1,
             tensorboard_log=LOG_DIR,
             device="cpu",
-            n_steps=2048,
+            n_steps=2000,
             learning_rate=3e-4,
             policy_kwargs=policy_kwargs,
-            batch_size=4096,
+            batch_size=4000,
             gamma=0.999,
             gae_lambda=0.95,
             n_epochs=10,
