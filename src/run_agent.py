@@ -6,7 +6,7 @@ from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
 from collections import Counter
 from pilot_planning_env import PlaneGameEnv
 
-def run_agent(model_folder):
+def run_agent(model_folder, deterministic=False):
     model_path = os.path.join(model_folder, "final_model.zip")
     normalize_path = os.path.join(model_folder, "vec_normalize.pkl")
 
@@ -37,7 +37,7 @@ def run_agent(model_folder):
     actions_taken = Counter()
     
     while True:
-        action, states = model.predict(obs, deterministic=False)
+        action, states = model.predict(obs, deterministic=deterministic)
         obs, reward, terminated, info_list = env.step(action)
         
         info = info_list[0]
@@ -72,6 +72,11 @@ def run_agent(model_folder):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run a trained Mini Plane PPO agent with UI.")
     parser.add_argument("model_folder", help="directory containing the saved model (final_model.zip) and normalizer (vec_normalize.pkl).")
+    parser.add_argument(
+        "--deterministic", "-d", 
+        action="store_true", 
+        help="Run the agent in deterministic mode"
+    )
     
     args = parser.parse_args()
     
