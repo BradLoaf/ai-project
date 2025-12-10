@@ -268,9 +268,9 @@ class PlaneGameEnv(gym.Env):
             if self.mediator.is_game_over: break
             self.mediator.increment_time(16)
 
-        # Reward 25 points for delivering a passenger
-        reward = (self.mediator.score - prev_score) * 25.0
-        
+        score_delta = self.mediator.score - prev_score
+        reward = score_delta * 25.0
+
         # small reward for surviving
         reward += 0.01
         
@@ -282,5 +282,10 @@ class PlaneGameEnv(gym.Env):
         if self.render_mode == "human":
             self.render()
 
-        return self._get_obs(), reward, terminated, False, self._get_info()
+        info = self._get_info()
+        info["valid_action"] = action_was_valid
+        info["passengers_delivered"] = score_delta
+        info["action_type"] = action_info["type"]
+
+        return self._get_obs(), reward, terminated, False, info
     

@@ -3,6 +3,7 @@ import argparse
 import gymnasium as gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+from collections import Counter
 from pilot_planning_env import PlaneGameEnv
 
 def run_agent(model_folder):
@@ -31,15 +32,41 @@ def run_agent(model_folder):
     model = PPO.load(model_path, env=env)
     obs = env.reset()
     total_reward = 0
+    invalid_actions = 0
+    passengers_delivered = 0
+    actions_taken = Counter()
     
     while True:
         action, states = model.predict(obs, deterministic=False)
-        obs, reward, terminated, info = env.step(action)
+        obs, reward, terminated, info_list = env.step(action)
+        
+        info = info_list[0]
         
         total_reward += reward[0]
+        
+        if not info.get("valid_action", True):
+            invalid_actions += 1
+            
+        passengers_delivered += info.get("passengers_delivered", 0)
+        
+        action_type = info.get("action_type", "UNKNOWN")
+        actions_taken[action_type] += 1
+
         if terminated[0]:
-            print(f"Total Reward for episode: {total_reward}")
+            print("-" * 30)
+            print(f"Episode Finished")
+            print(f"Total Reward:       {total_reward:.2f}")
+            print(f"Total Passengers:   {passengers_delivered}")
+            print(f"Invalid Moves:      {invalid_actions}")
+            print(f"Action Distribution:")
+            for action, count in actions_taken.items():
+                print(f"  - {action}: {count}")
+            print("-" * 30)
+            
             total_reward = 0
+            invalid_actions = 0
+            passengers_delivered = 0
+            actions_taken = Counter()
             obs = env.reset()
 
 if __name__ == "__main__":
